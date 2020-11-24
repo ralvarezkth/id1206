@@ -29,6 +29,8 @@ struct head {
 struct head *arena = NULL;
 struct head *flist;
 void getStats();
+struct head *after(struct head *block);
+
 
 void detach(struct head *block) {
 
@@ -51,7 +53,7 @@ void detach(struct head *block) {
         }
     }
 
-    if(block->prev != NULL) {
+    else if(block->prev != NULL) {
         struct head *prev = block->prev;
         prev->next = NULL;
 
@@ -67,6 +69,7 @@ void insert(struct head *block) {
     if(flist != NULL) {
         block->next = flist;
         block->prev = NULL;
+        block->free = TRUE;
         flist->prev = block;
         flist->bfree = TRUE;
         flist = block;
@@ -74,6 +77,9 @@ void insert(struct head *block) {
     else {
         block->next = NULL;
         block->prev = NULL;
+        block->free = TRUE;
+        struct head *aft = after(block);
+        aft->bfree = TRUE;
         flist = block;
     }
 }
@@ -134,11 +140,9 @@ struct head *new() {
 
     /* only touch the status fields */
     sentinel->bfree = TRUE;
-    sentinel->bsize = size;
+    //sentinel->bsize = size;
     sentinel->free = FALSE;
-    sentinel->size = 0;
-    sentinel->next = NULL;
-    sentinel->prev = NULL;
+    //sentinel->size = 1;
 
     /* this is the only arena we have */
     arena = (struct head *)new;
@@ -161,11 +165,8 @@ struct head *find(uint16_t size) {
     struct head *block;
     while(next != NULL) {
         if(next->size >= size) {
-            printf("find: block found with size: %d\n", (int)next->size);
             if(next->size >= LIMIT(size)) {
-                printf("find: splitting the block!\n");
                 block = split(next, size);
-                printf("find: handing out block with size: %d\n", (int)block->size);
                 return block;
             }
             else {
@@ -174,7 +175,6 @@ struct head *find(uint16_t size) {
                 block->free = FALSE;
                 struct head *aft = after(block);
                 aft->bfree = FALSE;
-                printf("find: handing out block with size: %d\n", (int)block->size);
                 return block;
             }
         }
@@ -240,12 +240,8 @@ void *dalloc(size_t request) {
         return NULL;
     }
     uint16_t size = adjust((uint16_t)request);
-    printf("\ndalloc: new block requested!\n");
-    printf("dalloc: adjusted size %d -> %d\n", (int)request, (int)size);
-    getStats();
     struct head *taken = find(size);
     if(taken == NULL){
-        printf("dalloc: returning NULL!\n");
         return NULL;
     }
     else {
@@ -260,15 +256,12 @@ void dfree(void *memory) {
     if(memory != NULL) {
         struct head *block = (struct head *)((char *)memory - HEAD);
 
-        printf("dfree: block returned, size: %d\n", (int)block->size);
-        
         struct head *aft = after(block);
         //merge(block);
         block->free = TRUE;
         aft->bfree = TRUE;
         aft->bsize = block->size;
         insert(block);
-        getStats();
     }   
 }
 
@@ -324,8 +317,4 @@ void sanity() {
         printf("   Sanity check returned with no errors!\n");
     }
     printf("\n********************************************************************\n");
-}
-
-struct head *getFList() {
-    return arena;
 }

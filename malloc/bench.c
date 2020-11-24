@@ -36,7 +36,7 @@ int main(int argc, char * argv[]) {
     }
     getStats();
 
-    //sanity();
+    sanity();
     
     return 0;
 }
