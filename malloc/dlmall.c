@@ -63,7 +63,7 @@ void detach(struct head *block) {
 }
 
 void insert(struct head *block) {
-    if(flist != NULL) {
+    if(flist != NULL && block != flist) {
         block->next = flist;
         block->prev = NULL;
         block->free = TRUE;
@@ -86,7 +86,7 @@ struct head *after(struct head *block) {
 }
 
 struct head *before(struct head *block) {
-    return (struct head*)((char *)block - HEAD - block->size);
+    return (struct head*)((char *)block - (HEAD + block->bsize));
 }
 
 struct head *split(struct head *block, uint16_t size) {
@@ -206,7 +206,30 @@ struct head *merge(struct head *block) {
  //   return block;
 //}
 
+struct head *merge(struct head *block) {
+    struct head *aft = after(block);
+    int size = HEAD + block->size;
 
+    if (block->bfree) {
+        printf("merging with empty block before size %d and %d -> %d\n", block->size, block->bsize, block->size + block->bsize + HEAD);
+        block->next = NULL;
+        block->prev = NULL;
+        block = before(block);
+        block->next = aft;
+        block->size += size;
+        aft->bsize = block->size;
+    }
+
+    if (aft->free) {
+        printf("merging with empty block afterwards size %d and %d -> %d\n", block->size, aft->size, block->size + aft->size + HEAD);
+        block->next = aft->next;
+        aft->prev = NULL;
+        aft->next = NULL;
+        block->size += HEAD + aft->size;
+    } 
+
+    return block;
+}
 
 void *dalloc(size_t request) {
     if(request <= 0){
@@ -229,8 +252,8 @@ void dfree(void *memory) {
     if(memory != NULL) {
         struct head *block = (struct head *)((char *)memory - HEAD);
 
+        block = merge(block);
         struct head *aft = after(block);
-        //merge(block);
         block->free = TRUE;
         aft->bfree = TRUE;
         aft->bsize = block->size;
