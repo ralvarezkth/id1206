@@ -23,7 +23,6 @@ int main(int argc, char * argv[]) {
         int size = request(min, max);
         int * memory = dalloc(size);
         if(memory == NULL) {
-            printf("dalloc returned NULL!\n\n");
             break;
         }
         if(j == concurrent) {
@@ -36,7 +35,7 @@ int main(int argc, char * argv[]) {
     }
     getStats();
 
-    sanity();
+    //sanity();
     
     return 0;
 }

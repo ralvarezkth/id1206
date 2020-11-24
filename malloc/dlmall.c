@@ -12,8 +12,6 @@
 #define HEAD (sizeof(struct head))
 #define MIN(size) (((size)>(8))?(size):(8))
 #define LIMIT(size) (MIN(0) + HEAD + size)
-#define MAGIC(memory) ((struct head*)memory -1) // buggy, don't use
-#define HIDE(block) (void*)((struct head*)block +1) // buggy, don't use
 #define ALIGN 8
 #define ARENA (64*1024)
 
@@ -28,7 +26,6 @@ struct head {
 
 struct head *arena = NULL;
 struct head *flist;
-void getStats();
 struct head *after(struct head *block);
 
 
@@ -120,7 +117,7 @@ struct head *new() {
     // using mmap, but could have used sbrk
     struct head *new = mmap(NULL, ARENA, PROT_READ | PROT_WRITE,
                             MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-
+ 
     if(new == MAP_FAILED) {
         printf("mmap failed: error %d\n", errno);
         return NULL;
@@ -209,31 +206,7 @@ struct head *merge(struct head *block) {
  //   return block;
 //}
 
-void getStats() {
-    int length = 0;
-    struct head *block = flist;
-    while(block != NULL) {
-        length++;
-        block = block->next;
-    }
-    int sizes[length];
-    block = flist;
-    for(int i = 0; i < length; i++) {
-        if(block != NULL){
-           sizes[i] = (int)block->size; 
-        }
-        block = block->next;
-    }
-    printf("********************************************************************\n");
-    printf("   Freelist stats\n");
-    printf("---------------------\n\n");
-    printf("\tFreelist length: %d\n\n", length);
-    printf("\tblock #\t\tsize\t\n");
-    for(int i = 0; i < length; i++) {
-        printf("\t   %d\t\t %d\n", i, sizes[i]);
-    }
-    printf("\n********************************************************************\n");
-}
+
 
 void *dalloc(size_t request) {
     if(request <= 0){
@@ -297,24 +270,75 @@ void sanity() {
 
 
     // print errors
-    printf("\n********************************************************************\n");
-    printf("   Sanity check\n");
-    printf("-------------------\n\n");
+    printf("\n##########################################################################\n");
+    printf("#   Sanity check\n");
+    printf("#####################\n\n");
     if (free_flag || size_flag || consec_flag) {
-        printf("   Sanity check failed:\n\n");
+        printf("#   Sanity check failed:\n\n");
 
         if(free_flag){
-            printf("   - Consecutive blocks have different values for free and bfree!\n");
+            printf("#   - Consecutive blocks have different values for free and bfree!\n");
         }
         if(size_flag) {
-            printf("   - Consecutive blocks have different values for size and bsize!\n");
+            printf("#   - Consecutive blocks have different values for size and bsize!\n");
         }
         if(consec_flag) {
-            printf("   - Two consecutive free blocks detected! Should be merged!\n");
+            printf("#   - Two consecutive free blocks detected! Should be merged!\n");
         }
     }
     else {
-        printf("   Sanity check returned with no errors!\n");
+        printf("#   Sanity check returned with no errors!\n");
     }
-    printf("\n********************************************************************\n");
+    printf("\n##########################################################################\n");
+}
+
+void insertionSort(int arr[], int n){ 
+    int i, key, j; 
+    for (i = 1; i < n; i++) { 
+        key = arr[i]; 
+        j = i - 1; 
+
+        while (j >= 0 && arr[j] > key) { 
+            arr[j + 1] = arr[j]; 
+            j = j - 1; 
+        } 
+        arr[j + 1] = key; 
+    } 
+}
+
+void getStats() {
+    int length = 0;
+    struct head *block = flist;
+    while(block != NULL) {
+        length++;
+        block = block->next;
+    }
+    int sizes[length];
+    block = flist;
+    for(int i = 0; i < length; i++) {
+        if(block != NULL){
+           sizes[i] = (int)block->size; 
+        }
+        block = block->next;
+    }
+    insertionSort(sizes, length);
+
+    printf("\n##########################################################################\n");
+    printf("#   Freelist stats\n");
+    printf("#####################\n\n");
+    printf("#\tFreelist length: %d\n\n", length);
+    printf("#\tblock size\t\t#blocks\t\n");
+    int count = 1;
+    int num = sizes[0];
+    for (int i = 1; i <= length; i++) {
+        if(sizes[i] == num) {
+            count++;
+        }
+        else {
+            printf("\t    %d\t\t\t  %d\n", num, count);
+            count = 1;
+            num = sizes[i];
+        }
+    }
+    printf("\n##########################################################################\n");
 }
