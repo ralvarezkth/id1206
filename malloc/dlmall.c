@@ -64,13 +64,18 @@ void detach(struct head *block) {
 }
 
 void insert(struct head *block) {
-    block->next = flist;
-    block->prev = NULL;
     if(flist != NULL) {
+        block->next = flist;
+        block->prev = NULL;
         flist->prev = block;
         flist->bfree = TRUE;
+        flist = block;
     }
-    flist = block;
+    else {
+        block->next = NULL;
+        block->prev = NULL;
+        flist = block;
+    }
 }
 
 struct head *after(struct head *block) {
@@ -160,7 +165,7 @@ struct head *find(uint16_t size) {
             if(next->size >= LIMIT(size)) {
                 printf("find: splitting the block!\n");
                 block = split(next, size);
-                printf("find: returning block with size: %d\n", (int)block->size);
+                printf("find: handing out block with size: %d\n", (int)block->size);
                 return block;
             }
             else {
@@ -169,6 +174,7 @@ struct head *find(uint16_t size) {
                 block->free = FALSE;
                 struct head *aft = after(block);
                 aft->bfree = FALSE;
+                printf("find: handing out block with size: %d\n", (int)block->size);
                 return block;
             }
         }
@@ -255,13 +261,14 @@ void dfree(void *memory) {
         struct head *block = (struct head *)((char *)memory - HEAD);
 
         printf("dfree: block returned, size: %d\n", (int)block->size);
-        getStats();
+        
         struct head *aft = after(block);
         //merge(block);
         block->free = TRUE;
         aft->bfree = TRUE;
         aft->bsize = block->size;
         insert(block);
+        getStats();
     }   
 }
 
