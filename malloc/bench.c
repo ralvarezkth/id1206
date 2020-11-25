@@ -19,6 +19,7 @@ int main(int argc, char * argv[]) {
     int concurrent = atoi(argv[4]);
 
     void *buffer[concurrent];
+    
     for(int i = 0, j = i; i < blocks; i++, j++) {
         int size = request(min, max);
         int * memory = dalloc(size);
@@ -33,8 +34,9 @@ int main(int argc, char * argv[]) {
         }
         buffer[j] = memory;
     }
-    getStats();
 
+    //getBlocks();
+    getFlistStats();
     //sanity();
     
     return 0;
