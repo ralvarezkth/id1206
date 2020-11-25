@@ -1,3 +1,5 @@
+
+
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/mman.h>
@@ -7,8 +9,8 @@
 #define TRUE 1
 #define FALSE 0
 
-#define HEAD (sizeof(struct head))
-#define MIN(size) (((size)>(8))?(size):(8))
+#define HEAD (sizeof(struct taken))
+#define MIN(size) (((size)>(16))?(size):(16))
 #define LIMIT(size) (MIN(0) + HEAD + size)
 #define ALIGN 8
 #define ARENA (64*1024)
@@ -22,9 +24,17 @@ struct head {
     struct head *prev;  // 8 bytes pointer
 };
 
+struct taken {
+    uint16_t bfree; // 2 bytes, the status of block before
+    uint16_t bsize; // 2 bytes, the size of block before
+    uint16_t free;  // 2 bytes, the status of the block
+    uint16_t size;  // 2 bytes, the size (max 2^16 i.e. 64 Ki byte)
+};
+
 struct head *arena = NULL;
 struct head *flist;
 struct head *after(struct head *block);
+
 
 void detach(struct head *block) {
 
@@ -60,14 +70,13 @@ void detach(struct head *block) {
 }
 
 void insert(struct head *block) {
-    if(flist != NULL && block != flist) {
+    if(flist != NULL) {
         block->next = flist;
         block->prev = NULL;
+        block->free = TRUE;
         flist->prev = block;
+        flist->bfree = TRUE;
         flist = block;
-    }
-    else if(flist != NULL && flist->next) {
-        ;
     }
     else {
         block->next = NULL;
@@ -84,7 +93,7 @@ struct head *after(struct head *block) {
 }
 
 struct head *before(struct head *block) {
-    return (struct head*)((char *)block - (HEAD + block->bsize));
+    return (struct head*)((char *)block - HEAD - block->size);
 }
 
 struct head *split(struct head *block, uint16_t size) {
@@ -112,6 +121,7 @@ struct head *new() {
         return NULL;
     }
 
+    // using mmap, but could have used sbrk
     struct head *new = mmap(NULL, ARENA, PROT_READ | PROT_WRITE,
                             MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
  
@@ -120,6 +130,7 @@ struct head *new() {
         return NULL;
     }
 
+    /* make room for head and dummy */
     uint16_t size = ARENA - 2*HEAD;
 
     new->bfree = FALSE;
@@ -131,9 +142,13 @@ struct head *new() {
 
     struct head *sentinel = after(new);
 
+    /* only touch the status fields */
     sentinel->bfree = TRUE;
+    //sentinel->bsize = size;
     sentinel->free = FALSE;
+    //sentinel->size = 1;
 
+    /* this is the only arena we have */
     arena = (struct head *)new;
 
     return new;
@@ -172,71 +187,33 @@ struct head *find(uint16_t size) {
 
     return NULL;
 }
-
+/*
 struct head *merge(struct head *block) {
-    struct head *aft = after(block);
-    struct head *bef = before(block);
 
-    if(block->bfree && aft->free) { // merge with blocks before and after
-        bef->size += block->size + aft->size + 2*HEAD;
-        if(flist == bef){
-            if(aft->next){
-                bef->next = aft->next;
-                aft->next->prev = bef;
-            }
-            else {
-                bef->next = NULL;
-            }
-        }
-        else {
-            if(aft->next) {
-                bef->prev->next = aft->next;
-                aft->next->prev = bef->prev;
-            }
-            else {
-                bef->prev->next = NULL;
-            }
-        }
-        aft->next = NULL;
-        aft->prev = NULL;
-        block->next = NULL;
-        block->prev = NULL;
-        block = bef;
-    }
-    else if (block->bfree) { // merge with block before
-        bef->size += block->size + HEAD;
-        if(flist == bef && flist->next) {
-            flist = flist->next;
-        }
-        else if(bef->next) {
-            bef->prev->next = bef->next;
-            bef->next->prev = bef->prev;
-        }
-        else {
-            flist->next = NULL;
-        }
-        block->next = NULL;
-        block->prev = NULL;
-        block = bef;
-    }
-    else if (aft->free) { // merge with block after
-        block->size += aft->size + HEAD;
-        if(flist == aft && flist->next) {
-            flist = flist->next;
-        }
-        else if(aft->next) {
-            bef->next = aft->next;
-            aft->next->prev = bef;
-        }
-        else {
-            bef->next = NULL;
-        }
-        aft->prev = NULL;
-        aft->next = NULL;
-       
-    } 
-    return block;
-}
+    struct head *aft = after(block);
+
+    if(block->bfree) {
+        /* inlink the block before */
+
+        /* calculate and set the total size of the merged blocks */
+
+        /* update the block after the merged blocks */
+
+        /* continue with the merged block */
+        //block = ...
+   // }
+
+  //  if(aft->free) {
+        /* unlink the block */
+
+        /* calculate and set the total size of merged blocks */
+
+        /* update the block after the merged block */
+ //   }
+ //   return block;
+//}
+
+
 
 void *dalloc(size_t request) {
     if(request <= 0){
@@ -258,8 +235,9 @@ void dfree(void *memory) {
 
     if(memory != NULL) {
         struct head *block = (struct head *)((char *)memory - HEAD);
-        block = merge(block);
+
         struct head *aft = after(block);
+        //merge(block);
         block->free = TRUE;
         aft->bfree = TRUE;
         aft->bsize = block->size;
@@ -281,6 +259,7 @@ void sanity() {
         if(next->size == 0) { // header after last block reached
             break;
         }
+        
         if(current->free != next->bfree){
             free_flag = true;
         }
@@ -289,7 +268,7 @@ void sanity() {
             size_flag = true;
         }
 
-        if(current->free == TRUE && next->free == TRUE) {
+        if(current->free == next->free) {
             consec_flag = true;
         }
 
@@ -334,7 +313,7 @@ void insertionSort(int arr[], int n){
     } 
 }
 
-void getFlistStats() {
+void getStats() {
     int length = 0;
     struct head *block = flist;
     while(block != NULL) {
@@ -369,44 +348,4 @@ void getFlistStats() {
         }
     }
     printf("\n##########################################################################\n");
-}
-
-void getBlocks() {
-    int length = 0;
-    struct head *block = flist;
-    while(block != NULL) {
-        length++;
-        block = block->next;
-    }
-    int sizes[length];
-    block = flist;
-    for(int i = 0; i < length; i++) {
-        if(block != NULL){
-           sizes[i] = (int)block->size; 
-        }
-        block = block->next;
-    }
-    printf("********************************************************************\n");
-    printf("   Freelist stats\n");
-    printf("---------------------\n\n");
-    printf("\tFreelist length: %d\n\n", length);
-    printf("\tblock #\t\tsize\t\n");
-    for(int i = 0; i < length; i++) {
-        printf("\t   %d\t\t %d\n", i, sizes[i]);
-    }
-    struct head *current = arena;
-    printf("---------------------\n");
-    printf("   Arena stats\n");
-    printf("---------------------\n\n");
-    printf("\tblock #\tsize\tfree\tbfree\n");
-    int arenaCount = 0;
-    while(1) {
-        printf("\t%d\t %d\t%d\t%d\n", arenaCount, current->size, current->free, current->bfree);
-        current = after(current);
-        arenaCount++;
-        if(current->size == 0)
-            break;
-    }
-    printf("\n********************************************************************\n");
-
 }

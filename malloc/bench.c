@@ -35,9 +35,9 @@ int main(int argc, char * argv[]) {
         buffer[j] = memory;
     }
 
-    //getBlocks();
-    getFlistStats();
-    //sanity();
+    getBlocks();
+    //getFlistStats();
+    sanity();
     
     return 0;
 }
