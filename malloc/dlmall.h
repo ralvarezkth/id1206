@@ -5,3 +5,4 @@ void dfree(void *memory);
 void sanity();
 void getBlocks();
 void getFlistStats();
+void looksie();

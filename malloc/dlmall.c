@@ -12,6 +12,7 @@
 #define LIMIT(size) (MIN(0) + HEAD + size)
 #define ALIGN 8
 #define ARENA (64*1024)
+#define MAXLIST 128
 
 struct head {
     uint16_t bfree; // 2 bytes, the status of block before
@@ -24,7 +25,18 @@ struct head {
 
 struct head *arena = NULL;
 struct head *flist;
+struct head *flist_8;
+struct head *flist_16;
+struct head *flist_32;
+struct head *flist_64;
+int flist_8_count = 0;
+int flist_16_count = 0;
+int flist_32_count = 0;
+int flist_64_count = 0;
 struct head *after(struct head *block);
+
+struct head *getlist(int size, struct head *block);
+int mergecheck(int size);
 
 void detach(struct head *block) {
 
@@ -60,13 +72,15 @@ void detach(struct head *block) {
 }
 
 void insert(struct head *block) {
-    if(flist != NULL && block != flist) {
-        block->next = flist;
+    struct head *target = getlist(block->size, block);
+
+    if(target != NULL && block != target) {
+        block->next = target;
         block->prev = NULL;
-        flist->prev = block;
-        flist = block;
+        target->prev = block;
+        target = block;
     }
-    else if(flist != NULL && flist->next) {
+    else if(target != NULL && target->next) {
         ;
     }
     else {
@@ -75,7 +89,7 @@ void insert(struct head *block) {
         block->free = TRUE;
         struct head *aft = after(block);
         aft->bfree = TRUE;
-        flist = block;
+        target = block;
     }
 }
 
@@ -149,8 +163,67 @@ int adjust(uint16_t request) {
 struct head *find(uint16_t size) {
     if(flist == NULL) {
         flist = new();
+        flist_8 = find((8 + HEAD) * MAXLIST + 2 * HEAD);
+        flist_16 = find((16 + HEAD) * MAXLIST + 2 * HEAD);
+        flist_32 = find((32 + HEAD) * MAXLIST + 2 * HEAD);
+        flist_64 = find((64 + HEAD) * MAXLIST + 2 * HEAD);
+        flist->size = flist->size - HEAD;
+        flist_8->size = flist_8->size - HEAD;
+        flist_16->size = flist_16->size - HEAD;
+        flist_32->size = flist_32->size - HEAD;
+        flist_64->size = flist_64->size - HEAD;
+        struct head *aft = after(flist);
+        aft->bsize = flist->size;
+        aft->bfree = TRUE;
+        aft->size = 0;
+        aft->free = FALSE;
+        aft = after(flist_8);
+        aft->bsize = flist_8->size;
+        aft->bfree = TRUE;
+        aft->size = 0;
+        aft->free = FALSE;
+        aft = after(flist_16);
+        aft->bsize = flist_16->size;
+        aft->bfree = TRUE;
+        aft->size = 0;
+        aft->free = FALSE;
+        aft = after(flist_32);
+        aft->bsize = flist_32->size;
+        aft->bfree = TRUE;
+        aft->size = 0;
+        aft->free = FALSE;
+        aft = after(flist_64);
+        aft->bsize = flist_64->size;
+        aft->bfree = TRUE;
+        aft->size = 0;
+        aft->free = FALSE;
+        flist_8->free = TRUE;
+        flist_16->free = TRUE;
+        flist_32->free = TRUE;
+        flist_64->free = TRUE;
+        flist_8->bfree = FALSE;
+        flist_16->bfree = FALSE;
+        flist_32->bfree = FALSE;
+        flist_64->bfree = FALSE;
+        flist_8->bsize = 0;
+        flist_16->bsize = 0;
+        flist_32->bsize = 0;
+        flist_64->bsize = 0;
+        flist_8->next = NULL;
+        flist_8->prev = NULL;
+        flist_16->next = NULL;
+        flist_16->prev = NULL;
+        flist_32->next = NULL;
+        flist_32->prev = NULL;
+        flist_64->next = NULL;
+        flist_64->prev = NULL;
+        printf("list8 at %p free %d size %d\n", flist_8, flist_8->free, flist_8->size);
+        printf("list16 at %p free %d size %d\n", flist_16, flist_16->free, flist_16->size);
+        printf("list32 at %p free %d size %d\n", flist_32, flist_32->free, flist_32->size);
+        printf("list64 at %p free %d size %d\n", flist_64, flist_64->free, flist_64->size);
+        printf("listall at %p free %d size %d\n", flist, flist->free, flist->size);
     }
-    struct head *next = flist;
+    struct head *next = getlist(size, NULL);
     struct head *block;
     while(next != NULL) {
         if(next->size >= size) {
@@ -176,6 +249,10 @@ struct head *find(uint16_t size) {
 struct head *merge(struct head *block) {
     struct head *aft = after(block);
     struct head *bef = before(block);
+
+    if (!mergecheck) {
+        return block;
+    }
 
     if(block->bfree && aft->free) { // merge with blocks before and after
         bef->size += block->size + aft->size + 2*HEAD;
@@ -258,7 +335,11 @@ void dfree(void *memory) {
 
     if(memory != NULL) {
         struct head *block = (struct head *)((char *)memory - HEAD);
-        block = merge(block);
+        
+        if (getlist(block->size, NULL) == flist) {
+            block = merge(block);
+        }
+
         struct head *aft = after(block);
         block->free = TRUE;
         aft->bfree = TRUE;
@@ -409,4 +490,43 @@ void getBlocks() {
     }
     printf("\n********************************************************************\n");
 
+}
+
+struct head *getlist(int size, struct head *block) {
+    if (block != NULL && (block == flist_8 || block == flist_16 || block == flist_32 || block == flist_64)) {
+        return block;
+    }
+
+    struct head *list = flist;
+
+    if (size <= 8 && flist_8_count <= MAXLIST) {
+        list = flist_8;
+    } else if (size <= 16 && flist_16_count <= MAXLIST) {
+        list = flist_16;
+    } else if (size <= 32 && flist_32_count <= MAXLIST) {
+        list = flist_32;
+    } else if (size <= 64 && flist_64_count <= MAXLIST) {
+        list = flist_64;
+    }
+
+    return list;
+}
+
+int mergecheck(int size) {
+
+    if ((size <= 8 && flist_8_count <= 128) || (size > 8 && size <= 16 && flist_16_count <= 128) ||
+        (size > 16 && size <= 32 && flist_32_count <= 128) || (size > 32 && size <= 64 && flist_64_count <= 128)) {
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+void looksie() {
+    struct head *test = flist;
+
+    for (int i = 0; i < 32; i++) {   
+        printf("nexxe%d %p size %d free %d bsize %d bfree %d\n", i, test, test->size, test->free, test->bsize, test->bfree);
+        test = after(test);
+    }
 }
