@@ -14,7 +14,7 @@
 #define ALIGN 8
 #define ARENA (64*1024)
 #define MAXLIST 128
-#define CACHE_ENABLED 1
+#define CACHE_ENABLED 0
 #define CACHE_LIMIT 3
 
 struct head {
@@ -51,8 +51,8 @@ struct head *shift(struct head *cache[]);
 void push(struct head *cache[], struct head *block);
 
 void detach(struct head *block) {
-
     if(block->next != NULL) {
+
         struct head *next = block->next;
         if(block->prev != NULL) {
             struct head *prev = block->prev;
@@ -98,7 +98,7 @@ void detach(struct head *block) {
         block->prev = NULL; 
     }
     else {
-        flist = NULL;
+ //       flist = NULL;
     }
 }
 
@@ -206,6 +206,7 @@ int adjust(uint16_t request) {
 }
 
 struct head *find(uint16_t size) {
+    
     if(flist == NULL) {
         flist = new();
         flist_8 = find((8 + HEAD) * MAXLIST + 2 * HEAD);
@@ -226,9 +227,8 @@ struct head *find(uint16_t size) {
     struct head *next = getlist(size, NULL);
     int index = getlistindex(getlist(size, NULL));
     struct head *block;
-
     while(next != NULL) {
-        if (list_cache[index].l_cache[0] != NULL && size == pow(2, index + 3)) {
+        if (CACHE_ENABLED && index != -1 && list_cache[index].l_cache[0] != NULL && size == pow(2, index + 3)) {
             struct head *block = shift(list_cache[index].l_cache);
             detach(block);
             block->free = FALSE;
@@ -330,13 +330,15 @@ void *dalloc(size_t request) {
     if(request <= 0){
         return NULL;
     }
-    uint16_t size = adjust((uint16_t)request);
+
+    uint16_t size = adjust((uint16_t)request);    
     struct head *taken = find(size);
     if(taken == NULL){
         return NULL;
     }
     else {
         void *memory = (void *)((char *)taken + HEAD);
+
         return memory;
     }
 }
@@ -352,7 +354,7 @@ void dfree(void *memory) {
         } else if (CACHE_ENABLED) {
             int index = getlistindex(getlist(block->size, NULL));
 
-            if (list_cache[index].l_cache[2] == NULL && block->size == pow(2, index + 3)) {
+            if (index != -1 && list_cache[index].l_cache[2] == NULL && block->size == pow(2, index + 3)) {
                 push(list_cache[index].l_cache, block);
             }
         }
@@ -530,7 +532,7 @@ struct head *getlist(int size, struct head *block) {
 }
 
 int getlistindex(struct head *block) {
-    return block == flist_8 ? 0 : (block == flist_16 ? 1 : (block == flist_32 ? 2 : 3));
+    return block == flist_8 ? 0 : (block == flist_16 ? 1 : (block == flist_32 ? 2 : (block == flist_64 ? 3 : -1)));
 }
 
 int mergecheck(int size) {
@@ -569,7 +571,7 @@ struct head *shift(struct head *cache[]) {
 }
 
 void push(struct head *cache[], struct head *block) {
-    for (int i = 0; i < CACHE_LIMIT; i++) {
+    for (int i = 0; i < CACHE_LIMIT && cache[i] != block; i++) {
         if (cache[i] == NULL) {
             cache[i] = block;
             break;
